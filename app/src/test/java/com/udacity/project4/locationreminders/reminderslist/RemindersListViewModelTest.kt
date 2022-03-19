@@ -3,6 +3,7 @@ package com.udacity.project4.locationreminders.reminderslist
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.udacity.project4.locationreminders.MainCoroutineRule
 import com.udacity.project4.locationreminders.data.FakeDataSource
 import com.udacity.project4.locationreminders.data.dto.ReminderDTO
 import com.udacity.project4.locationreminders.getOrAwaitValue
@@ -14,10 +15,14 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.koin.core.context.stopKoin
 
 @RunWith(AndroidJUnit4::class)
 @ExperimentalCoroutinesApi
 class RemindersListViewModelTest {
+
+    @get:Rule
+    var mainCoroutineRule = MainCoroutineRule()
 
     @get:Rule
     var instantExecutorRule = InstantTaskExecutorRule()
@@ -27,6 +32,7 @@ class RemindersListViewModelTest {
 
     @Before
     fun initRemindersListViewModel(){
+        stopKoin()
         dataSource = FakeDataSource()
         remindersListViewModel = RemindersListViewModel(
             ApplicationProvider.getApplicationContext(),
@@ -57,6 +63,25 @@ class RemindersListViewModelTest {
 
         //Then reminder list live data should have data
         assertThat(remindersListViewModel.remindersList.getOrAwaitValue(), not(nullValue()))
+    }
+
+    @Test
+    fun check_loading() = runBlocking {
+        mainCoroutineRule.pauseDispatcher()
+        remindersListViewModel.loadReminders()
+        assertThat(
+            remindersListViewModel.showLoading.getOrAwaitValue(),
+            `is`(true)
+        )
+        mainCoroutineRule.resumeDispatcher()
+        assertThat(remindersListViewModel.showLoading.getOrAwaitValue(), `is`(false))
+    }
+
+    @Test
+    fun shouldReturnError() = runBlocking {
+        dataSource.shouldReturnError = true
+        remindersListViewModel.loadReminders()
+        assertThat(remindersListViewModel.showSnackBar.getOrAwaitValue(), `is`("Test Error"))
     }
 
 }

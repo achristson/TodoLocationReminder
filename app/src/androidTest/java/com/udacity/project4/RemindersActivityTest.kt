@@ -3,13 +3,20 @@ package com.udacity.project4
 import android.app.Application
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider.getApplicationContext
-import androidx.test.espresso.Espresso
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.Espresso.pressBack
+import androidx.test.espresso.IdlingRegistry
 import androidx.test.espresso.action.ViewActions
-import androidx.test.espresso.assertion.ViewAssertions
-import androidx.test.espresso.matcher.ViewMatchers
-import androidx.test.espresso.matcher.ViewMatchers.withId
+import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.RootMatchers.withDecorView
+import androidx.test.espresso.matcher.ViewMatchers.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import androidx.test.rule.ActivityTestRule
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject
+import androidx.test.uiautomator.UiSelector
 import com.udacity.project4.locationreminders.RemindersActivity
 import com.udacity.project4.locationreminders.data.ReminderDataSource
 import com.udacity.project4.locationreminders.data.dto.ReminderDTO
@@ -19,8 +26,13 @@ import com.udacity.project4.locationreminders.reminderslist.RemindersListViewMod
 import com.udacity.project4.locationreminders.savereminder.SaveReminderViewModel
 import com.udacity.project4.util.DataBindingIdlingResource
 import com.udacity.project4.util.monitorActivity
+import com.udacity.project4.utils.EspressoIdlingResource
 import kotlinx.coroutines.runBlocking
+import net.bytebuddy.agent.ByteBuddyAgent.getInstrumentation
+import org.hamcrest.Matchers.not
+import org.junit.After
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koin.androidx.viewmodel.dsl.viewModel
@@ -29,6 +41,7 @@ import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import org.koin.test.AutoCloseKoinTest
 import org.koin.test.get
+
 
 @RunWith(AndroidJUnit4::class)
 @LargeTest
@@ -39,6 +52,10 @@ class RemindersActivityTest :
     private lateinit var repository: ReminderDataSource
     private lateinit var appContext: Application
     private val dataBindingIdlingResource = DataBindingIdlingResource()
+
+    @get:Rule
+    var activityTestRule : ActivityTestRule<RemindersActivity> =
+        ActivityTestRule(RemindersActivity::class.java)
 
     /**
      * As we use Koin as a Service Locator Library to develop our code, we'll also use Koin to test our code.
@@ -77,18 +94,30 @@ class RemindersActivityTest :
         }
     }
 
+    @Before
+    fun registerIdlingResource(){
+        IdlingRegistry.getInstance().register(EspressoIdlingResource.countingIdlingResource)
+        IdlingRegistry.getInstance().register(dataBindingIdlingResource)
+    }
+
+    @After
+    fun unregisterIdlingResource(){
+        IdlingRegistry.getInstance().unregister(EspressoIdlingResource.countingIdlingResource)
+        IdlingRegistry.getInstance().unregister(dataBindingIdlingResource)
+    }
+
     @Test
     fun addReminder() = runBlocking {
         val activityScenario = ActivityScenario.launch(RemindersActivity::class.java)
 
         dataBindingIdlingResource.monitorActivity(activityScenario)
-        Espresso.onView(withId(R.id.noDataTextView)).check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
-        Espresso.onView(withId(R.id.addReminderFAB)).perform(ViewActions.click())
-        Espresso.onView(withId(R.id.reminderTitle)).perform(ViewActions.replaceText("title"))
-        Espresso.onView(withId(R.id.reminderDescription)).perform(ViewActions.replaceText("desc"))
-        Espresso.onView(withId(R.id.selectLocation)).perform(ViewActions.click())
-        Espresso.onView(withId(R.id.map)).perform(ViewActions.click())
-        Espresso.pressBack()
+        onView(withId(R.id.noDataTextView)).check(matches(isDisplayed()))
+        onView(withId(R.id.addReminderFAB)).perform(click())
+        onView(withId(R.id.reminderTitle)).perform(ViewActions.replaceText("title"))
+        onView(withId(R.id.reminderDescription)).perform(ViewActions.replaceText("desc"))
+        onView(withId(R.id.selectLocation)).perform(click())
+        onView(withId(R.id.map)).perform(click())
+        pressBack()
 
         repository.saveReminder(
             ReminderDTO(
@@ -99,10 +128,66 @@ class RemindersActivityTest :
                 0.0
             )
         )
-        Espresso.onView(ViewMatchers.withText("title")).check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
-        Espresso.onView(ViewMatchers.withText("desc")).check(
-            ViewAssertions.matches(
-            ViewMatchers.isDisplayed()))
+        onView(withText("title")).check(matches(isDisplayed()))
+        onView(withText("desc")).check(
+            matches(isDisplayed()))
+        activityScenario.close()
+    }
+
+    @Test
+    fun saveReminder_showToast_Test() = runBlocking{
+        val activityScenario = ActivityScenario.launch(RemindersActivity::class.java)
+        dataBindingIdlingResource.monitorActivity(activityScenario)
+
+        onView(withId(R.id.noDataTextView)).check(matches(isDisplayed()))
+        onView(withId(R.id.addReminderFAB)).perform(click())
+        onView(withId(R.id.reminderTitle)).perform(ViewActions.replaceText("title"))
+        onView(withId(R.id.reminderDescription)).perform(ViewActions.replaceText("desc"))
+
+        repository.saveReminder(
+            ReminderDTO(
+                "title",
+                "desc",
+                "location",
+                0.0,
+                0.0
+            )
+        )
+
+        onView(withText(R.string.reminder_saved))
+            .inRoot(withDecorView(not(activityTestRule.activity.window.decorView))).check(
+                matches(isDisplayed()))
+        activityScenario.close()
+    }
+
+    @Test
+    fun emptyTitle_returnsSnackbarWithErrorMessage(){
+        val activityScenario = ActivityScenario.launch(RemindersActivity::class.java)
+        dataBindingIdlingResource.monitorActivity(activityScenario)
+
+        onView(withId(R.id.noDataTextView)).check(matches(isDisplayed()))
+        onView(withId(R.id.addReminderFAB)).perform(click())
+        onView(withId(R.id.reminderDescription)).perform(ViewActions.replaceText("desc"))
+        onView(withId(R.id.saveReminder)).perform(click())
+
+        onView(withId(R.id.snackbar_text))
+            .check(matches(withText(R.string.err_enter_title)))
+        activityScenario.close()
+    }
+
+    @Test
+    fun emptyLocation_returnsSnackbarWithErrorMessage(){
+        val activityScenario = ActivityScenario.launch(RemindersActivity::class.java)
+        dataBindingIdlingResource.monitorActivity(activityScenario)
+
+        onView(withId(R.id.noDataTextView)).check(matches(isDisplayed()))
+        onView(withId(R.id.addReminderFAB)).perform(click())
+        onView(withId(R.id.reminderTitle)).perform(ViewActions.replaceText("title"))
+        onView(withId(R.id.reminderDescription)).perform(ViewActions.replaceText("desc"))
+        onView(withId(R.id.saveReminder)).perform(click())
+
+        onView(withId(R.id.snackbar_text))
+            .check(matches(withText(R.string.err_select_location)))
         activityScenario.close()
     }
 

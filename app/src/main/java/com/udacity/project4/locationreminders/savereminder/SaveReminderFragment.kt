@@ -16,6 +16,7 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.databinding.DataBindingUtil
+import androidx.lifecycle.Observer
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import com.google.android.material.snackbar.Snackbar
@@ -27,6 +28,7 @@ import com.udacity.project4.locationreminders.geofence.GeofenceBroadcastReceiver
 import com.udacity.project4.locationreminders.reminderslist.ReminderDataItem
 import com.udacity.project4.utils.setDisplayHomeAsUpEnabled
 import org.koin.android.ext.android.inject
+import org.koin.androidx.viewmodel.ext.android.sharedViewModel
 
 private const val REQUEST_TURN_DEVICE_LOCATION_ON = 29
 private const val TAG = "SaveReminderFragment"
@@ -35,7 +37,7 @@ private const val REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE = 3
 
 class SaveReminderFragment : BaseFragment() {
     //Get the view model this time as a single to be shared with the another fragment
-    override val _viewModel: SaveReminderViewModel by inject()
+    override val _viewModel: SaveReminderViewModel by sharedViewModel()
     private lateinit var binding: FragmentSaveReminderBinding
     private val runningQOrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
     private lateinit var reminder : ReminderDataItem
@@ -73,6 +75,7 @@ class SaveReminderFragment : BaseFragment() {
         }
 
         binding.saveReminder.setOnClickListener {
+            checkPermsAndStartGeoFencing()
             val title = _viewModel.reminderTitle.value
             val description = _viewModel.reminderDescription.value
             val location = _viewModel.reminderSelectedLocationStr.value
@@ -81,7 +84,11 @@ class SaveReminderFragment : BaseFragment() {
 
             reminder = ReminderDataItem(title, description, location, latitude, longitude)
             _viewModel.validateAndSaveReminder(reminder)
-            checkPermsAndStartGeoFencing()
+            if (reminder.location != null &&
+                    reminder.latitude != null &&
+                    reminder.longitude != null){
+                addGeofence()
+            }
         }
     }
 
@@ -122,7 +129,9 @@ class SaveReminderFragment : BaseFragment() {
         locationSettingsResponseTask.addOnFailureListener { exception ->
             if (exception is ResolvableApiException && resolve) {
                 try {
-                    exception.startResolutionForResult(requireActivity(), REQUEST_TURN_DEVICE_LOCATION_ON)
+                    this.startIntentSenderForResult(exception.resolution.intentSender,
+                        REQUEST_TURN_DEVICE_LOCATION_ON, null, 0, 0,
+                        0, null )
                 } catch (sendEx : IntentSender.SendIntentException) {
                     Log.d(TAG, "Error getting location settings resolution: " + sendEx.message)
                 }
@@ -136,9 +145,14 @@ class SaveReminderFragment : BaseFragment() {
             }
         }
         locationSettingsResponseTask.addOnCompleteListener {
-            if (it.isSuccessful){
-                addGeofence()
-            }
+
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_TURN_DEVICE_LOCATION_ON){
+            checkDeviceLocationSettingsAndStartGeofence(false)
         }
     }
 
@@ -162,17 +176,22 @@ class SaveReminderFragment : BaseFragment() {
 
         geofencingClient.addGeofences(geofencingRequest, geofencePendingIntent)?.run {
             addOnSuccessListener {
-                //Toast.makeText(requireActivity(), R.string.geofence_added, Toast.LENGTH_SHORT).show()
                 Log.e("Add geofence", geofence.requestId)
+
+                _viewModel.validReminder.observe(viewLifecycleOwner, Observer {
+                    if (it == true){
+                        _viewModel.showSnackBarInt.value = R.string.geofence_added
+                        _viewModel.navigationCommand.value = NavigationCommand.BackTo(R.id.reminderListFragment)
+                    }
+                })
             }
             addOnFailureListener {
-                Toast.makeText(requireContext(), R.string.geofences_not_added, Toast.LENGTH_SHORT).show()
+                _viewModel.showSnackBarInt.value = R.string.geofences_not_added
                 if (it.message != null){
                     Log.w(TAG, it.message.toString())
                 }
             }
         }
-        _viewModel.navigationCommand.value = NavigationCommand.BackTo(R.id.reminderListFragment)
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
