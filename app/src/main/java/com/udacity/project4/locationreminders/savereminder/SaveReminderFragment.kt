@@ -6,8 +6,10 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -20,6 +22,7 @@ import androidx.lifecycle.Observer
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import com.google.android.material.snackbar.Snackbar
+import com.udacity.project4.BuildConfig
 import com.udacity.project4.R
 import com.udacity.project4.base.BaseFragment
 import com.udacity.project4.base.NavigationCommand
@@ -34,6 +37,8 @@ private const val REQUEST_TURN_DEVICE_LOCATION_ON = 29
 private const val TAG = "SaveReminderFragment"
 private const val REQUEST_FOREGROUND_AND_BACKGROUND_PERMISSION_RESULT_CODE = 2
 private const val REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE = 3
+private const val BACKGROUND_LOCATION_PERMISSION_INDEX = 1
+private const val LOCATION_PERMISSION_INDEX = 0
 
 class SaveReminderFragment : BaseFragment() {
     //Get the view model this time as a single to be shared with the another fragment
@@ -75,7 +80,7 @@ class SaveReminderFragment : BaseFragment() {
         }
 
         binding.saveReminder.setOnClickListener {
-            checkPermsAndStartGeoFencing()
+
             val title = _viewModel.reminderTitle.value
             val description = _viewModel.reminderDescription.value
             val location = _viewModel.reminderSelectedLocationStr.value
@@ -83,12 +88,33 @@ class SaveReminderFragment : BaseFragment() {
             val longitude = _viewModel.longitude.value
 
             reminder = ReminderDataItem(title, description, location, latitude, longitude)
-            _viewModel.validateAndSaveReminder(reminder)
-            if (reminder.location != null &&
-                    reminder.latitude != null &&
-                    reminder.longitude != null){
-                addGeofence()
-            }
+
+            checkPermsAndStartGeoFencing()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        if (grantResults.isEmpty() ||
+            grantResults[LOCATION_PERMISSION_INDEX] == PackageManager.PERMISSION_DENIED ||
+            (requestCode == REQUEST_FOREGROUND_AND_BACKGROUND_PERMISSION_RESULT_CODE &&
+                    grantResults[BACKGROUND_LOCATION_PERMISSION_INDEX] == PackageManager.PERMISSION_DENIED)){
+            Snackbar.make(
+                binding.saveReminder,
+                R.string.permission_denied_explanation,
+                Snackbar.LENGTH_INDEFINITE)
+                .setAction(R.string.settings){
+                    startActivity(Intent().apply{
+                        action = Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+                        data = Uri.fromParts("package", BuildConfig.APPLICATION_ID, null)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    })
+                }.show()
+        } else {
+            checkDeviceLocationSettingsAndStartGeofence()
         }
     }
 
@@ -145,7 +171,9 @@ class SaveReminderFragment : BaseFragment() {
             }
         }
         locationSettingsResponseTask.addOnCompleteListener {
-
+            if(it.isSuccessful){
+                addGeofence()
+            }
         }
     }
 
@@ -176,14 +204,8 @@ class SaveReminderFragment : BaseFragment() {
 
         geofencingClient.addGeofences(geofencingRequest, geofencePendingIntent)?.run {
             addOnSuccessListener {
-                Log.e("Add geofence", geofence.requestId)
-
-                _viewModel.validReminder.observe(viewLifecycleOwner, Observer {
-                    if (it == true){
-                        _viewModel.showSnackBarInt.value = R.string.geofence_added
-                        _viewModel.navigationCommand.value = NavigationCommand.BackTo(R.id.reminderListFragment)
-                    }
-                })
+                _viewModel.showSnackBarInt.value = R.string.geofence_added
+                _viewModel.validateAndSaveReminder(reminder)
             }
             addOnFailureListener {
                 _viewModel.showSnackBarInt.value = R.string.geofences_not_added

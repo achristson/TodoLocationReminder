@@ -2,6 +2,7 @@ package com.udacity.project4.locationreminders.data
 
 import com.udacity.project4.locationreminders.data.dto.ReminderDTO
 import com.udacity.project4.locationreminders.data.dto.Result
+import java.lang.Exception
 
 //Use FakeDataSource that acts as a test double to the LocalDataSource
 class FakeDataSource : ReminderDataSource {
@@ -22,11 +23,16 @@ class FakeDataSource : ReminderDataSource {
     }
 
     override suspend fun getReminder(id: String): Result<ReminderDTO> {
-        val reminder = reminders?.find {it.id == id}
-        if (reminder != null){
-            return Result.Success(reminder)
-        } else {
-            return Result.Error("Reminder Not Found")
+        if (shouldReturnError) return Result.Error("Test Error")
+        return try {
+            val reminder = reminders?.find { it.id == id }
+            if (reminder != null) {
+                Result.Success(reminder)
+            } else {
+                Result.Error("Reminder Not Found")
+            }
+        } catch (e: Exception) {
+            Result.Error(e.message)
         }
     }
 

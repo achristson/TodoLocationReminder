@@ -45,6 +45,7 @@ class SelectLocationFragment : BaseFragment(), OnMapReadyCallback {
     private lateinit var userLocation : LatLng
     private var currentLatLng : LatLng? = null
     private lateinit var fusedLocationClient : FusedLocationProviderClient
+    private var locationName : String? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -72,7 +73,7 @@ class SelectLocationFragment : BaseFragment(), OnMapReadyCallback {
             if (::userLocation.isInitialized){
                 _viewModel.latitude.value = userLocation.latitude
                 _viewModel.longitude.value = userLocation.longitude
-                _viewModel.reminderSelectedLocationStr.value = "Location"
+                _viewModel.reminderSelectedLocationStr.value = locationName
                 _viewModel.navigationCommand.value = NavigationCommand.BackTo(R.id.saveReminderFragment)
             } else {
                 Toast.makeText(context, "Please choose a location", Toast.LENGTH_SHORT).show()
@@ -81,13 +82,11 @@ class SelectLocationFragment : BaseFragment(), OnMapReadyCallback {
     }
 
     override fun onMapReady(googleMap: GoogleMap){
-        Log.i("location", "here map")
         map = googleMap
         setMapStyle(map)
         getUserLocation()
-        setMapLongClick(map)
+        setMapClick(map)
         setPoiClick(map)
-        //Log.i("location", "$userLocation")
     }
 
     private fun setMapStyle(map : GoogleMap){
@@ -126,9 +125,8 @@ class SelectLocationFragment : BaseFragment(), OnMapReadyCallback {
                     for (location in locationResult.locations){
                         if (location != null){
                             currentLatLng = LatLng(location.latitude, location.longitude)
-                            map.addMarker(
-                            MarkerOptions().position(currentLatLng!!))
                             map.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 15f))
+                            fusedLocationClient.removeLocationUpdates(this)
                         }
                     }
                 }
@@ -138,8 +136,6 @@ class SelectLocationFragment : BaseFragment(), OnMapReadyCallback {
                 locationRequest,
                 locationCallback,
                 Looper.getMainLooper())
-
-            Log.i("location", "$currentLatLng")
 
         } else {
             this.requestPermissions(
@@ -155,6 +151,7 @@ class SelectLocationFragment : BaseFragment(), OnMapReadyCallback {
                 MarkerOptions()
                     .position(poi.latLng))
             userLocation = poi.latLng
+            locationName = poi.name
         }
     }
 
@@ -203,10 +200,11 @@ class SelectLocationFragment : BaseFragment(), OnMapReadyCallback {
         return true
     }
 
-    private fun setMapLongClick (map : GoogleMap) {
+    private fun setMapClick (map : GoogleMap) {
         map.setOnMapClickListener { latLng ->
             map.clear()
             userLocation = latLng
+            locationName = "Location"
 
             map.addMarker(
                 MarkerOptions()
