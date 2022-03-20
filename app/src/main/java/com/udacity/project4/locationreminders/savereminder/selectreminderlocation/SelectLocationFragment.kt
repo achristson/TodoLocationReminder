@@ -183,7 +183,6 @@ class SelectLocationFragment : BaseFragment(), OnMapReadyCallback {
     override fun onOptionsItemSelected(item: MenuItem) : Boolean{
         map.mapType = when (item.itemId) {
             R.id.normal_map -> {
-                Log.i("location", "here")
                 GoogleMap.MAP_TYPE_NORMAL
             }
             R.id.hybrid_map -> {

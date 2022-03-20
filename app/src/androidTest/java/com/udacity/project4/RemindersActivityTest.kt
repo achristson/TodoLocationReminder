@@ -2,12 +2,13 @@ package com.udacity.project4
 
 import android.app.Application
 import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.core.app.ApplicationProvider.getApplicationContext
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.espresso.IdlingRegistry
 import androidx.test.espresso.action.ViewActions
-import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.*
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.RootMatchers.withDecorView
 import androidx.test.espresso.matcher.ViewMatchers.*
@@ -20,8 +21,10 @@ import androidx.test.uiautomator.UiSelector
 import com.udacity.project4.locationreminders.RemindersActivity
 import com.udacity.project4.locationreminders.data.ReminderDataSource
 import com.udacity.project4.locationreminders.data.dto.ReminderDTO
+import com.udacity.project4.locationreminders.data.local.FakeDataSource
 import com.udacity.project4.locationreminders.data.local.LocalDB
 import com.udacity.project4.locationreminders.data.local.RemindersLocalRepository
+import com.udacity.project4.locationreminders.reminderslist.ReminderDataItem
 import com.udacity.project4.locationreminders.reminderslist.RemindersListViewModel
 import com.udacity.project4.locationreminders.savereminder.SaveReminderViewModel
 import com.udacity.project4.util.DataBindingIdlingResource
@@ -51,6 +54,7 @@ class RemindersActivityTest :
 
     private lateinit var repository: ReminderDataSource
     private lateinit var appContext: Application
+    private lateinit var saveReminderViewModel: SaveReminderViewModel
     private val dataBindingIdlingResource = DataBindingIdlingResource()
 
     @get:Rule
@@ -92,6 +96,8 @@ class RemindersActivityTest :
         runBlocking {
             repository.deleteAllReminders()
         }
+        saveReminderViewModel =
+            SaveReminderViewModel(appContext, FakeDataSource())
     }
 
     @Before
@@ -107,7 +113,7 @@ class RemindersActivityTest :
     }
 
     @Test
-    fun addReminder() = runBlocking {
+    fun addReminder() {
         val activityScenario = ActivityScenario.launch(RemindersActivity::class.java)
 
         dataBindingIdlingResource.monitorActivity(activityScenario)
@@ -119,8 +125,8 @@ class RemindersActivityTest :
         onView(withId(R.id.map)).perform(click())
         pressBack()
 
-        repository.saveReminder(
-            ReminderDTO(
+        saveReminderViewModel.saveReminder(
+            ReminderDataItem(
                 "title",
                 "desc",
                 "location",
@@ -128,6 +134,7 @@ class RemindersActivityTest :
                 0.0
             )
         )
+
         onView(withText("title")).check(matches(isDisplayed()))
         onView(withText("desc")).check(
             matches(isDisplayed()))
@@ -135,7 +142,7 @@ class RemindersActivityTest :
     }
 
     @Test
-    fun saveReminder_showToast_Test() = runBlocking{
+    fun saveReminder_showToast() = runBlocking {
         val activityScenario = ActivityScenario.launch(RemindersActivity::class.java)
         dataBindingIdlingResource.monitorActivity(activityScenario)
 
@@ -143,16 +150,11 @@ class RemindersActivityTest :
         onView(withId(R.id.addReminderFAB)).perform(click())
         onView(withId(R.id.reminderTitle)).perform(ViewActions.replaceText("title"))
         onView(withId(R.id.reminderDescription)).perform(ViewActions.replaceText("desc"))
-
-        repository.saveReminder(
-            ReminderDTO(
-                "title",
-                "desc",
-                "location",
-                0.0,
-                0.0
-            )
-        )
+        closeSoftKeyboard()
+        onView(withId(R.id.selectLocation)).perform(click())
+        onView(withId(R.id.map)).perform(click())
+        onView(withId(R.id.save_button)).perform(click())
+        onView(withId(R.id.saveReminder)).perform(click())
 
         onView(withText(R.string.reminder_saved))
             .inRoot(withDecorView(not(activityTestRule.activity.window.decorView))).check(
