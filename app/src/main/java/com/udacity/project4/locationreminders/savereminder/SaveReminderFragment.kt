@@ -89,7 +89,9 @@ class SaveReminderFragment : BaseFragment() {
 
             reminder = ReminderDataItem(title, description, location, latitude, longitude)
 
-            checkPermsAndStartGeoFencing()
+            if (_viewModel.validateEnteredData(reminder)){
+                checkPermsAndStartGeoFencing()
+            }
         }
     }
 
